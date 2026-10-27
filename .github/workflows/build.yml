@@ -1,0 +1,319 @@
+name: Build JoikClient APK
+on:
+  workflow_dispatch:
+  push:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.7
+      - name: Create project files
+        run: |
+          mkdir -p "proj/app"
+          cat > "proj/app/build.gradle.kts" <<'JOIK_EOF_0'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+
+          android {
+              namespace = "com.joik.client"
+              compileSdk = 34
+              defaultConfig {
+                  applicationId = "com.joik.client"
+                  minSdk = 23
+                  targetSdk = 34
+                  versionCode = 1
+                  versionName = "0.1"
+              }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions { jvmTarget = "17" }
+          }
+          JOIK_EOF_0
+          mkdir -p "proj/app/src/main"
+          cat > "proj/app/src/main/AndroidManifest.xml" <<'JOIK_EOF_1'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+
+              <queries>
+                  <package android:name="com.mojang.minecraftpe" />
+              </queries>
+
+              <application
+                  android:allowBackup="true"
+                  android:label="JoikClient"
+                  android:theme="@android:style/Theme.Material.NoActionBar">
+
+                  <activity android:name=".MainActivity" android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+
+                  <activity android:name=".ModulesActivity" android:exported="false" />
+              </application>
+          </manifest>
+          JOIK_EOF_1
+          mkdir -p "proj/app/src/main/java/com/joik/client"
+          cat > "proj/app/src/main/java/com/joik/client/Config.kt" <<'JOIK_EOF_2'
+          package com.joik.client
+
+          object Config {
+              const val MC_PACKAGE = "com.mojang.minecraftpe"
+              const val MC_VERSION = "1.1.5"
+
+              // ключ в настройках -> название в меню
+              val MODULES = listOf(
+                  "cps" to "CPS (клики в секунду)",
+                  "fps" to "FPS",
+                  "ping" to "Пинг",
+                  "coords" to "Координаты",
+                  "armor" to "Статус брони",
+                  "keys" to "Клавиши (keystrokes)"
+              )
+          }
+          JOIK_EOF_2
+          mkdir -p "proj/app/src/main/java/com/joik/client"
+          cat > "proj/app/src/main/java/com/joik/client/MainActivity.kt" <<'JOIK_EOF_3'
+          package com.joik.client
+
+          import android.app.Activity
+          import android.content.Intent
+          import android.os.Bundle
+          import android.view.Gravity
+          import android.widget.LinearLayout
+          import android.widget.TextView
+          import android.widget.Toast
+
+          class MainActivity : Activity() {
+
+              private lateinit var mcStatus: TextView
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  window.statusBarColor = Neon.BG
+                  window.navigationBarColor = Neon.BG
+
+                  val root = LinearLayout(this).apply {
+                      orientation = LinearLayout.VERTICAL
+                      setBackgroundColor(Neon.BG)
+                      setPadding(dp(24), dp(72), dp(24), dp(24))
+                  }
+
+                  root.add(label("JOIK", 56f, Neon.CYAN, true).apply {
+                      gravity = Gravity.CENTER
+                      letterSpacing = 0.15f
+                      setShadowLayer(28f, 0f, 0f, Neon.CYAN)
+                  }, 0)
+                  root.add(label("CLIENT  •  ${Config.MC_VERSION}", 18f, Neon.PINK, true).apply {
+                      gravity = Gravity.CENTER
+                      letterSpacing = 0.3f
+                      setShadowLayer(20f, 0f, 0f, Neon.PINK)
+                  }, 0)
+
+                  mcStatus = label("", 15f, Neon.DIM).apply { gravity = Gravity.CENTER }
+                  root.add(mcStatus, 48)
+
+                  root.add(neonButton("ИГРАТЬ", Neon.CYAN) { play() }, 32)
+                  root.add(neonButton("Модули", Neon.PINK) {
+                      startActivity(Intent(this, ModulesActivity::class.java))
+                  }, 14)
+
+                  setContentView(root)
+              }
+
+              override fun onResume() {
+                  super.onResume()
+                  val v = mcVersion()
+                  when {
+                      v == null -> mcStatus.show("Minecraft PE не найден", Neon.PINK)
+                      v.startsWith(Config.MC_VERSION) -> mcStatus.show("Minecraft PE $v  ✓", Neon.GREEN)
+                      else -> mcStatus.show("Нужна ${Config.MC_VERSION}, установлена $v", Neon.PINK)
+                  }
+              }
+
+              private fun mcVersion(): String? = try {
+                  packageManager.getPackageInfo(Config.MC_PACKAGE, 0).versionName
+              } catch (e: Exception) {
+                  null
+              }
+
+              private fun TextView.show(t: String, c: Int) {
+                  text = t
+                  setTextColor(c)
+              }
+
+              private fun play() {
+                  val v = mcVersion()
+                  if (v == null || !v.startsWith(Config.MC_VERSION)) {
+                      Toast.makeText(this, "Нужен Minecraft PE ${Config.MC_VERSION}", Toast.LENGTH_SHORT).show()
+                      return
+                  }
+                  packageManager.getLaunchIntentForPackage(Config.MC_PACKAGE)?.let { startActivity(it) }
+              }
+          }
+          JOIK_EOF_3
+          mkdir -p "proj/app/src/main/java/com/joik/client"
+          cat > "proj/app/src/main/java/com/joik/client/ModulesActivity.kt" <<'JOIK_EOF_4'
+          package com.joik.client
+
+          import android.app.Activity
+          import android.content.res.ColorStateList
+          import android.os.Bundle
+          import android.view.Gravity
+          import android.widget.LinearLayout
+          import android.widget.ScrollView
+          import android.widget.Switch
+
+          class ModulesActivity : Activity() {
+
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  window.statusBarColor = Neon.BG
+                  window.navigationBarColor = Neon.BG
+
+                  val prefs = getSharedPreferences("joik", MODE_PRIVATE)
+                  val states = arrayOf(intArrayOf(android.R.attr.state_checked), intArrayOf())
+
+                  val list = LinearLayout(this).apply {
+                      orientation = LinearLayout.VERTICAL
+                      setPadding(dp(20), dp(48), dp(20), dp(24))
+                  }
+
+                  list.add(label("Модули", 32f, Neon.CYAN, true).apply {
+                      setShadowLayer(20f, 0f, 0f, Neon.CYAN)
+                  }, 0)
+                  list.add(label("Пока это только настройки. В игре модули заработают после нативной части клиента.", 13f, Neon.DIM), 4)
+
+                  for ((key, title) in Config.MODULES) {
+                      val row = LinearLayout(this).apply {
+                          orientation = LinearLayout.HORIZONTAL
+                          gravity = Gravity.CENTER_VERTICAL
+                          background = box(Neon.CARD, Neon.EDGE)
+                          setPadding(dp(16), dp(14), dp(16), dp(14))
+                      }
+                      row.addView(
+                          label(title, 17f, Neon.TEXT),
+                          LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                      )
+                      row.addView(Switch(this).apply {
+                          isChecked = prefs.getBoolean(key, false)
+                          thumbTintList = ColorStateList(states, intArrayOf(Neon.CYAN, Neon.DIM))
+                          trackTintList = ColorStateList(states, intArrayOf(0x6600F0FF, 0x33FFFFFF))
+                          setOnCheckedChangeListener { _, on -> prefs.edit().putBoolean(key, on).apply() }
+                      })
+                      list.add(row)
+                  }
+
+                  list.add(neonButton("Назад", Neon.PINK) { finish() }, 20)
+
+                  setContentView(ScrollView(this).apply {
+                      setBackgroundColor(Neon.BG)
+                      addView(list)
+                  })
+              }
+          }
+          JOIK_EOF_4
+          mkdir -p "proj/app/src/main/java/com/joik/client"
+          cat > "proj/app/src/main/java/com/joik/client/Neon.kt" <<'JOIK_EOF_5'
+          package com.joik.client
+
+          import android.content.Context
+          import android.graphics.Typeface
+          import android.graphics.drawable.GradientDrawable
+          import android.view.View
+          import android.widget.Button
+          import android.widget.LinearLayout
+          import android.widget.TextView
+
+          object Neon {
+              val BG = 0xFF0A0A12.toInt()
+              val CARD = 0xFF14141F.toInt()
+              val EDGE = 0xFF2A2A40.toInt()
+              val CYAN = 0xFF00F0FF.toInt()
+              val PINK = 0xFFFF2BD6.toInt()
+              val GREEN = 0xFF39FF14.toInt()
+              val TEXT = 0xFFE8E8F0.toInt()
+              val DIM = 0xFF7A7A90.toInt()
+          }
+
+          fun Context.dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
+
+          fun Context.box(fill: Int, stroke: Int, radius: Int = 14) = GradientDrawable().apply {
+              setColor(fill)
+              cornerRadius = dp(radius).toFloat()
+              setStroke(dp(2), stroke)
+          }
+
+          fun Context.label(t: String, size: Float, color: Int, bold: Boolean = false) = TextView(this).apply {
+              text = t
+              textSize = size
+              setTextColor(color)
+              if (bold) typeface = Typeface.DEFAULT_BOLD
+          }
+
+          fun Context.neonButton(t: String, color: Int, onClick: () -> Unit) = Button(this).apply {
+              text = t
+              isAllCaps = false
+              textSize = 18f
+              typeface = Typeface.DEFAULT_BOLD
+              setTextColor(color)
+              stateListAnimator = null
+              background = box(Neon.CARD, color)
+              setPadding(dp(16), dp(14), dp(16), dp(14))
+              setOnClickListener { onClick() }
+          }
+
+          fun LinearLayout.add(v: View, top: Int = 12) {
+              val lp = LinearLayout.LayoutParams(
+                  LinearLayout.LayoutParams.MATCH_PARENT,
+                  LinearLayout.LayoutParams.WRAP_CONTENT
+              ).apply { topMargin = context.dp(top) }
+              addView(v, lp)
+          }
+          JOIK_EOF_5
+          cat > "proj/build.gradle.kts" <<'JOIK_EOF_6'
+          plugins {
+              id("com.android.application") version "8.5.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.24" apply false
+          }
+          JOIK_EOF_6
+          cat > "proj/gradle.properties" <<'JOIK_EOF_7'
+          org.gradle.jvmargs=-Xmx2g
+          android.useAndroidX=true
+          kotlin.code.style=official
+          JOIK_EOF_7
+          mkdir -p "proj/gradle/wrapper"
+          cat > "proj/gradle/wrapper/gradle-wrapper.properties" <<'JOIK_EOF_8'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.7-bin.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          JOIK_EOF_8
+          cat > "proj/settings.gradle.kts" <<'JOIK_EOF_9'
+          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+          dependencyResolutionManagement { repositories { google(); mavenCentral() } }
+          rootProject.name = "JoikClient"
+          include(":app")
+          JOIK_EOF_9
+      - name: Build
+        run: |
+          cd proj
+          gradle assembleDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JoikClient-apk
+          path: proj/app/build/outputs/apk/debug/app-debug.apk
+          
